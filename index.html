@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Infinity Screenings</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --text-color: #ffffff;
+            --primary-red: #E50914;
+            --primary-red-hover: #F6121D;
+            --seat-available: transparent;
+            --seat-border: #4CAF50;
+            --seat-selected: #4CAF50;
+            --seat-locked: #FFC107;
+            --seat-booked: #333333;
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color:transparent; }
+        html, body { overflow-x:hidden; width:100%; max-width:100%; }
+        #app-container { width:100%; max-width:100vw; overflow-x:hidden; }
+        body { background-color:#080405; color:var(--text-color); font-size:16px; line-height:1.4; min-height:100vh; }
+        body::before { content:''; position:fixed; inset:0; z-index:-2; pointer-events:none;
+            background:
+              radial-gradient(ellipse 90% 60% at 50% -10%, rgba(150,15,22,0.32) 0%, transparent 55%),
+              radial-gradient(circle at 12% 18%, rgba(120,12,18,0.22) 0%, transparent 32%),
+              radial-gradient(circle at 88% 82%, rgba(80,8,14,0.20) 0%, transparent 38%),
+              linear-gradient(165deg, #0e0406 0%, #070304 46%, #0a0508 100%); }
+        body::after { content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+            backdrop-filter:blur(50px); -webkit-backdrop-filter:blur(50px);
+            background:radial-gradient(circle at 50% 120%, rgba(180,20,28,0.10), transparent 60%); }
+
+        .splash-container { position:fixed; inset:0; background-color:var(--bg-color); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:9999; transition:opacity 0.6s ease; padding:20px; overflow:hidden; }
+        .splash-glow { position:absolute; width:120vw; height:120vw; max-width:700px; max-height:700px; border-radius:50%;
+            background:radial-gradient(circle, rgba(180,20,25,0.28) 0%, rgba(90,8,12,0.12) 40%, transparent 70%);
+            animation:splashGlow 3s ease-in-out infinite; }
+        @keyframes splashGlow { 0%,100%{ transform:scale(0.9); opacity:0.7; } 50%{ transform:scale(1.05); opacity:1; } }
+        .logos-wrapper { display:flex; gap:22px; align-items:center; justify-content:center; position:relative; z-index:1; }
+        .splash-logo { height:74px; width:auto; max-width:130px; object-fit:contain; opacity:0; filter:drop-shadow(0 4px 18px rgba(0,0,0,0.6)); }
+        .splash-logo-1 { animation:logoInLeft 0.9s cubic-bezier(.2,.7,.2,1) 0.2s forwards; }
+        .splash-logo-2 { animation:logoInRight 0.9s cubic-bezier(.2,.7,.2,1) 0.2s forwards; }
+        .splash-x { font-size:1.8rem; color:var(--primary-red); font-weight:300; opacity:0; transform:scale(0); animation:xPop 0.5s ease 0.9s forwards; position:relative; z-index:1; }
+        .splash-tag { margin-top:22px; font-size:0.72rem; letter-spacing:8px; color:#888; opacity:0; animation:tagFade 0.8s ease 1.3s forwards; position:relative; z-index:1; padding-left:8px; }
+        @keyframes logoInLeft { 0%{ opacity:0; transform:translateX(-40px) scale(0.8); } 100%{ opacity:1; transform:translateX(0) scale(1); } }
+        @keyframes logoInRight { 0%{ opacity:0; transform:translateX(40px) scale(0.8); } 100%{ opacity:1; transform:translateX(0) scale(1); } }
+        @keyframes xPop { 0%{ opacity:0; transform:scale(0) rotate(-90deg); } 100%{ opacity:1; transform:scale(1) rotate(0); } }
+        @keyframes tagFade { 0%{ opacity:0; transform:translateY(6px); } 100%{ opacity:0.85; transform:translateY(0); } }
+        .logo-placeholder { font-size:1.2rem; font-weight:bold; letter-spacing:2px; padding:10px 18px; border:2px solid var(--text-color); text-align:center; }
+
+        .hidden { display:none !important; }
+        .view { min-height:100vh; min-height:100dvh; animation:fadeIn 0.35s ease-in-out; }
+        /* Views that should distribute content across the full screen height */
+        .view.flex-fill { display:flex; flex-direction:column; }
+        .view.flex-fill .container { flex:1; display:flex; flex-direction:column; }
+.view.flex-fill .seat-scroll { flex:1; overflow-x:auto; overflow-y:hidden; display:block; text-align:center; }
+        #view-seats .container > h2 { margin-top:14px; }
+        #view-seats .subtitle { margin-bottom:0; }
+        #view-seats .legend { margin-top:20px; margin-bottom:20px; padding:14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:12px; }
+        #view-seats .screen-indicator { margin-top:12px; }
+        @keyframes fadeIn { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+        .container { padding:16px; max-width:640px; width:100%; margin:0 auto; }
+        #view-seats .container, #view-checkout .container { max-width:100%; }
+        #view-seats .container > .seat-scroll { max-width:none; }
+
+        .app-header { display:flex; justify-content:space-between; align-items:center; padding:calc(11px + var(--safe-top)) 18px 11px; position:sticky; top:0; background:rgba(12,5,6,0.5); backdrop-filter:blur(16px) saturate(140%); -webkit-backdrop-filter:blur(16px) saturate(140%); border-bottom:1px solid rgba(255,255,255,0.07); z-index:100; }
+        .app-header img { height:32px; width:auto; max-width:88px; object-fit:contain; }
+        .app-header .college-logo { height:32px; }
+        .logo-small { font-size:0.95rem; font-weight:bold; letter-spacing:1px; }
+
+        /* Back bar */
+        .back-bar { display:flex; align-items:center; gap:6px; padding:calc(10px + var(--safe-top)) 16px 10px; position:sticky; top:0; z-index:150; background:rgba(5,5,5,0.96); backdrop-filter:blur(6px); border-bottom:1px solid #1a1a1a; }
+        .back-btn { background:none; border:none; color:#fff; font-size:1rem; display:flex; align-items:center; gap:6px; cursor:pointer; padding:6px 4px; }
+        .back-btn:active { opacity:0.6; }
+
+        .hero-banner {
+            position:relative;
+            width:100%;
+            background-color:#0a0405;
+            display:block;
+            line-height:0;
+        }
+        .hero-poster { display:block; width:100%; height:auto; }  /* whole poster, edge-to-edge */
+.hero-banner::after {
+            content: ''; 
+            position: absolute; 
+            left: 0; right: 0; bottom: 0; top: 0; /* Stretches gradient across the whole poster */
+            background: linear-gradient(
+                to top, 
+                #0a0405 0%, 
+                rgba(10,4,5,0.98) 25%, 
+                rgba(10,4,5,0.7) 50%, 
+                rgba(10,4,5,0.1) 85%, 
+                transparent 100%
+            );
+            pointer-events: none; 
+            z-index: 1;
+        }
+.hero-content { 
+            position: absolute; 
+            left: 0; right: 0; bottom: 0; 
+            z-index: 2; 
+            line-height: 1.4; 
+            max-width: 640px; 
+            margin: 0 auto; 
+            width: 100%; 
+            padding: 0 18px calc(18px + var(--safe-bottom)); 
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8); /* Adds extra pop to the text */
+        }
+        .movie-title { font-size:2.2rem; margin-bottom:8px; text-transform:uppercase; font-weight:900; line-height:1.05; }
+        .movie-meta { color:#ddd; font-size:0.85rem; margin-bottom:10px; display:flex; flex-wrap:wrap; gap:6px 14px; }
+        .movie-meta span { display:inline-flex; align-items:center; gap:5px; }
+        .chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+        .chip { background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2); padding:4px 10px; border-radius:20px; font-size:0.78rem; font-weight:600; }
+        .chip.imdb { background:#f5c51822; border-color:#f5c518; color:#f5c518; }
+        .movie-desc { font-size:0.92rem; color:#ccc; margin-bottom:16px; line-height:1.45; }
+        .desc-toggle { color: #fff; font-weight: 700; cursor: pointer; display: inline; margin-left: 5px; text-decoration: underline; text-underline-offset: 3px; }
+        .desc-toggle:active { opacity:0.6; }
+
+        .btn-primary { background:linear-gradient(135deg, #F6121D 0%, #C50812 100%); color:#fff; border:none; padding:15px 24px; font-size:1.05rem; font-weight:bold; border-radius:10px; cursor:pointer; width:100%; transition:transform 0.1s, box-shadow 0.2s, filter 0.2s; box-shadow:0 6px 20px rgba(197,8,18,0.35); }
+        .btn-primary:hover:not(:disabled) { filter:brightness(1.08); box-shadow:0 8px 26px rgba(197,8,18,0.45); }
+        .btn-primary:active:not(:disabled) { transform:scale(0.98); }
+        .btn-primary:disabled { background-color:#444; color:#888; cursor:not-allowed; }
+        .btn-outline { background:transparent; color:#fff; border:1.5px solid #666; padding:13px 24px; font-size:1rem; font-weight:600; border-radius:8px; cursor:pointer; width:100%; margin-bottom:12px; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .btn-outline:active { background:rgba(255,255,255,0.08); }
+
+        h2 { font-size:1.5rem; margin-bottom:4px; }
+        .subtitle { color:#aaa; font-size:0.9rem; margin-bottom:16px; }
+
+        /* Legend - horizontal scroll safe on mobile */
+        .legend { display:flex; gap:16px; margin-bottom:22px; font-size:0.8rem; flex-wrap:wrap; }
+        .legend-item { display:flex; align-items:center; gap:6px; }
+        .seat-box { width:15px; height:15px; border-radius:4px; flex-shrink:0; }
+
+.screen-indicator { display:block; width:100%; box-sizing:border-box; text-align:center; padding:9px; background:linear-gradient(to bottom,#2a2a2a,transparent); margin-bottom:26px; font-size:0.72rem; letter-spacing:5px; border-radius:50% 50% 0 0; color:#888; }
+
+.scroll-inner { display:block; width:max-content; min-width:100%; padding:0 16px; box-sizing:border-box; }
+        /* Seat map: horizontally scrollable, centered when it fits */
+.seat-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:8px; width:100vw; position:relative; left:50%; right:50%; margin-left:-50vw; margin-right:-50vw; padding-left:16px; padding-right:16px; box-sizing:border-box; }
+.seat-sections { display:inline-flex; width:max-content; gap:0; align-items:stretch; }
+        .seat-section { display:flex; flex-direction:column; gap:9px; justify-content:flex-start; }
+        .seat-section.align-right .seat-row { justify-content:flex-end; }
+        .seat-section.align-left .seat-row { justify-content:flex-start; }
+        .seat-section.align-center .seat-row { justify-content:center; }
+        .path-gap { width:28px; align-self:stretch; margin:0 6px; border-radius:6px; background:repeating-linear-gradient(45deg,#0f0f0f,#0f0f0f 6px,#181818 6px,#181818 12px); display:flex; align-items:center; justify-content:center; }
+        .path-gap span { writing-mode:vertical-rl; color:#444; font-size:0.6rem; letter-spacing:2px; }
+        .seat-row { display:flex; gap:7px; align-items:center; }
+        .seat-row .rlabel { width:15px; font-size:0.68rem; color:#666; flex-shrink:0; text-align:center; }
+
+        .seat { width:30px; height:30px; border-radius:6px; cursor:pointer; transition:transform 0.1s; flex-shrink:0; }
+        .seat.available { background-color:var(--seat-available); border:2px solid var(--seat-border); }
+        .seat.selected { background-color:var(--seat-selected); border:2px solid var(--seat-selected); }
+        .seat.locked { background-color:var(--seat-locked); border:2px solid var(--seat-locked); cursor:not-allowed; }
+        .seat.booked { background-color:var(--seat-booked); border:2px solid var(--seat-booked); cursor:not-allowed; }
+        .seat.available:active { transform:scale(0.88); }
+
+        .action-footer { position:sticky; bottom:0; left:0; width:100%; background-color:rgba(15,15,15,0.97); backdrop-filter:blur(8px); padding:14px 16px calc(14px + var(--safe-bottom)); display:flex; justify-content:space-between; align-items:center; border-top:1px solid #2a2a2a; gap:14px; z-index:90; }
+        .action-footer p { font-size:0.9rem; white-space:nowrap; }
+        .action-footer .btn-primary { width:auto; padding:13px 28px; flex-shrink:0; }
+
+        .seat-form-group { background:rgba(255,255,255,0.04); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); padding:18px; border-radius:14px; margin-bottom:16px; border:1px solid rgba(255,255,255,0.08); border-left:4px solid var(--primary-red); }
+        .seat-form-group h3 { margin-bottom:12px; font-size:1.05rem; }
+        .input-field { width:100%; background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.12); color:white; padding:14px; margin-bottom:10px; border-radius:9px; font-size:16px; transition:border-color 0.15s, background 0.15s; }
+        .input-field:focus { outline:none; border-color:var(--primary-red); background:rgba(0,0,0,0.5); }
+        .input-field.err { border-color:#ff5252; }
+        .enroll-wrap { display:flex; align-items:center; gap:0; margin-bottom:10px; background:#1e1e1e; border:1px solid #333; border-radius:8px; overflow:hidden; }
+        .enroll-wrap:focus-within { border-color:var(--primary-red); }
+        .enroll-part { background:transparent; border:none; color:#fff; padding:14px 8px; font-size:16px; text-align:center; width:60px; }
+        .enroll-part:focus { outline:none; }
+        .enroll-suffix { flex:1; }
+        .enroll-fixed { color:#888; font-size:16px; letter-spacing:1px; padding:0 4px; white-space:nowrap; user-select:none; }
+        .enroll-wrap.err { border-color:#ff5252; }
+        .field-err { color:#ff5252; font-size:0.78rem; margin:-6px 0 10px 2px; }
+
+        .center-text { text-align:center; padding-top:40px; }
+        .success-icon { font-size:3.5rem; color:var(--seat-selected); margin-bottom:16px; }
+        .ticket-code { background-color:#111; padding:20px; border-radius:10px; margin:24px 0; border:1px dashed #555; }
+        .ticket-code h3 { font-size:2.2rem; color:var(--primary-red); letter-spacing:2px; margin-top:8px; word-break:break-all; }
+
+        .info-screen { text-align:center; padding:70px 20px; color:#888; }
+        .info-screen h2 { color:#fff; margin-bottom:10px; }
+        .timer-note { color:var(--seat-locked); font-size:0.85rem; margin-bottom:16px; text-align:center; }
+
+        /* Previous screenings */
+        .prev-wrap { padding:20px 16px calc(30px + var(--safe-bottom)); max-width:640px; margin:0 auto; }
+        .prev-wrap h3 { font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; color:#888; margin-bottom:14px; }
+        .prev-card { display:flex; gap:12px; background:rgba(255,255,255,0.04); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.08); border-radius:14px; overflow:hidden; margin-bottom:12px; transition:transform 0.15s, border-color 0.15s; }
+        .prev-card .thumb { width:80px; flex-shrink:0; background-size:cover; background-position:center; background-color:#222; }
+        .prev-card .info { padding:12px 12px 12px 0; flex:1; min-width:0; }
+        .prev-card .info h4 { font-size:1rem; margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .prev-card .info p { color:#888; font-size:0.8rem; }
+
+        /* Blocking overlay for multi-session */
+        .block-overlay { position:fixed; inset:0; background:rgba(5,5,5,0.97); z-index:99999; display:flex; align-items:center; justify-content:center; padding:30px; text-align:center; }
+        .block-overlay .box { max-width:340px; }
+        .block-overlay h2 { color:var(--primary-red); margin-bottom:12px; }
+        .block-overlay p { color:#bbb; margin-bottom:20px; line-height:1.5; }
+
+        .app-footer {
+            text-align: center;
+            padding: 32px 16px calc(24px + var(--safe-bottom));
+            color: #555;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            margin-top: auto; /* Pushes it to the bottom if content is short */
+            background-color: #0a0405;
+        }
+        .app-footer span {
+            color: var(--primary-red);
+            font-weight: 600;
+        }
+
+        @media (min-width:700px){ .movie-title{ font-size:3rem; } .seat{ width:32px; height:32px; } }
+    </style>
+</head>
+<body>
+
+    <div id="splash-screen" class="splash-container">
+        <div class="splash-glow"></div>
+        <div class="logos-wrapper">
+            <img class="splash-logo splash-logo-1" src="https://i.postimg.cc/FRv7b4rD/infinity-logo.png" alt="Infinity Club" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'logo-placeholder',textContent:'INFINITY'}))">
+            <span class="splash-x">×</span>
+            <img class="splash-logo splash-logo-2" src="https://i.postimg.cc/XqD2M1Hc/Dot-transparent.png" alt="Dot Club" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'logo-placeholder',textContent:'DOT CLUB'}))">
+        </div>
+        <p class="splash-tag">PRESENTS</p>
+    </div>
+
+    <div id="app-container" class="hidden">
+        <!-- LANDING -->
+        <main id="view-landing" class="view active">
+            <header class="app-header">
+                <img src="https://i.postimg.cc/FRv7b4rD/infinity-logo.png" alt="Infinity Club" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'logo-small',textContent:'INFINITY'}))">
+                <img class="college-logo" src="https://i.postimg.cc/tCMc8J8Y/IBS-TRansparent.png" alt="College" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'logo-small',textContent:'IBS'}))">
+                <img src="https://i.postimg.cc/XqD2M1Hc/Dot-transparent.png" alt="Dot Club" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'logo-small',textContent:'DOT CLUB'}))">
+            </header>
+            <div id="landing-inner"><div class="info-screen"><h2>Loading…</h2></div></div>
+            <div id="prev-screenings" class="prev-wrap"></div>
+            <footer class="app-footer">
+                <p>&copy; 2026 All rights reserved.</p>
+                <p>Built by <span>DOT CLUB</span>, IBS Hyderabad.</p>
+            </footer>
+        </main>
+
+        <!-- SEATS -->
+        <main id="view-seats" class="view flex-fill hidden">
+            <div class="back-bar"><button class="back-btn" id="back-to-landing">‹ Back</button></div>
+            <div class="container">
+                <h2>Select Your Seats</h2>
+                <p class="subtitle">Max 5 seats per user</p>
+                <div class="legend">
+                    <div class="legend-item"><div class="seat-box available" style="border:2px solid var(--seat-border)"></div> Available</div>
+                    <div class="legend-item"><div class="seat-box selected" style="background:var(--seat-selected)"></div> Selected</div>
+                    <div class="legend-item"><div class="seat-box locked" style="background:var(--seat-locked)"></div> In progress</div>
+                    <div class="legend-item"><div class="seat-box booked" style="background:var(--seat-booked)"></div> Booked</div>
+                </div>
+<div class="seat-scroll">
+    <div class="scroll-inner">
+        <div class="screen-indicator">SCREEN</div>
+        <div id="seat-sections" class="seat-sections"></div>
+    </div>
+</div>
+            </div>
+            <div class="action-footer">
+                <p>Selected: <span id="selected-count">0</span>/5</p>
+                <button id="btn-proceed" class="btn-primary" disabled>Proceed</button>
+            </div>
+            <footer class="app-footer">
+                <p>&copy; 2026 All rights reserved.</p>
+                <p>Built by <span>DOT CLUB</span>, IBS Hyderabad.</p>
+            </footer>
+        </main>
+
+        <!-- CHECKOUT -->
+        <main id="view-checkout" class="view flex-fill hidden">
+            <div class="back-bar"><button class="back-btn" id="back-to-seats">‹ Back (release seats)</button></div>
+            <div class="container">
+                <h2>Your Details</h2>
+                <p class="subtitle">Enter details for each selected seat.</p>
+                <p class="timer-note" id="lock-timer"></p>
+                <form id="checkout-form">
+                    <div id="dynamic-forms-container"></div>
+                    <button type="submit" class="btn-primary" id="btn-confirm">Confirm Booking</button>
+                </form>
+            </div>
+            <footer class="app-footer">
+                <p>&copy; 2026 All rights reserved.</p>
+                <p>Built by <span>DOT CLUB</span>, IBS Hyderabad.</p>
+            </footer>
+        </main>
+
+        <!-- SUCCESS -->
+        <main id="view-success" class="view hidden">
+            <div class="container center-text">
+                <div class="success-icon">✓</div>
+                <h2>Booking Confirmed!</h2>
+                <p style="color:#bbb;">Your seats have been reserved.</p>
+                <div class="ticket-code">
+                    <p style="color:#888; font-size:0.85rem;">Booking Code</p>
+                    <h3 id="booking-id-display">INF-XXXX</h3>
+                </div>
+                <p class="subtitle">Screenshot this page — show the code at entry.</p>
+                <button class="btn-primary" id="btn-done" style="margin-top:10px;">Done</button>
+            </div>
+            <footer class="app-footer">
+                <p>&copy; 2026 All rights reserved.</p>
+                <p>Built by <span>DOT CLUB</span>, IBS Hyderabad.</p>
+            </footer>
+        </main>
+    </div>
+
+    <script type="module">
+    import { db, LOCK_TIMEOUT_MS } from "./firebase-config.js";
+    import {
+      collection, doc, getDocs, onSnapshot,
+      runTransaction, writeBatch, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+    const $ = id => document.getElementById(id);
+    const prettySeat = id => id.replace(/^S\d+-/, '');
+
+    /* ---- Single-session-per-device lock (via localStorage + BroadcastChannel) ---- */
+    // A stable per-device id.
+    let deviceId = localStorage.getItem('infinity_device');
+    if(!deviceId){ deviceId='dev-'+Math.random().toString(36).slice(2)+Date.now(); localStorage.setItem('infinity_device', deviceId); }
+    // A unique id for THIS tab.
+    const tabId = 'tab-'+Math.random().toString(36).slice(2);
+    const sessionId = tabId; // seat locks keyed to this tab
+
+    // Use BroadcastChannel so tabs on the same device can detect each other.
+    let bc=null, isPrimary=true;
+    try { bc = new BroadcastChannel('infinity_session'); } catch(e){}
+    if(bc){
+      bc.onmessage = ev => {
+        if(ev.data?.type==='claim' && ev.data.tabId!==tabId){
+          // Another tab claims the session. If we're active, defend; else yield.
+          if(isPrimary) bc.postMessage({type:'defend', tabId});
+        }
+        if(ev.data?.type==='defend' && ev.data.tabId!==tabId){
+          // Someone already holds it -> we become blocked.
+          showBlocked();
+        }
+      };
+      // Announce ourselves; if another primary defends within 400ms, we block.
+      bc.postMessage({type:'claim', tabId});
+    }
+    function showBlocked(){
+      isPrimary=false;
+      if($('__block')) return;
+      const o=document.createElement('div'); o.id='__block'; o.className='block-overlay';
+      o.innerHTML=`<div class="box"><h2>Session already open</h2>
+        <p>A booking session is already in progress in another tab or window on this device. Please use that one, or close it and reload here.</p>
+        <button class="btn-primary" onclick="location.reload()">Reload</button></div>`;
+      document.body.appendChild(o);
+    }
+
+    let screeningId=null, screening=null, seatsCache={}, selectedSeats=[], unsubSeats=null;
+    let isDescExpanded = false;
+    const MAX_SEATS=5;
+    let lockTimerInterval=null, lockExpiresAt=null;
+    let isFirstSeatRender = true;
+
+    /* Splash */
+    setTimeout(()=>{ $('splash-screen').style.opacity='0';
+      setTimeout(()=>{ $('splash-screen').classList.add('hidden'); $('app-container').classList.remove('hidden'); },600);
+    },2800);
+
+    const views={ landing:$('view-landing'), seats:$('view-seats'), checkout:$('view-checkout'), success:$('view-success') };
+    function switchView(v){ Object.values(views).forEach(x=>x.classList.add('hidden')); views[v].classList.remove('hidden'); window.scrollTo(0,0); }
+
+    function sectionAlign(sIdx,total){ if(total===1) return 'align-center'; if(sIdx===0) return 'align-right'; if(sIdx===total-1) return 'align-left'; return 'align-center'; }
+    // Seat numbers run continuously right-to-left across the whole row.
+    // Given per-section seat counts for a row, returns each section's global
+    // seat numbers in left-to-right visual order. [3,3] -> [[6,5,4],[3,2,1]]
+    function rowSeatNumbers(sectionCounts){
+      const total=sectionCounts.reduce((a,b)=>a+b,0);
+      let pos=0;
+      return sectionCounts.map(count=>{ const nums=[]; for(let k=0;k<count;k++){ nums.push(total-pos); pos++; } return nums; });
+    }
+
+    function fmtWhen(s){
+      const parts=[];
+      if(s.venue) parts.push(s.venue);
+      if(s.screeningDate){
+        const d=new Date(s.screeningDate+'T00:00');
+        parts.push(isNaN(d)?s.screeningDate:d.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}));
+      }
+      if(s.screeningTime){
+        const [h,m]=s.screeningTime.split(':');
+        const dt=new Date(); dt.setHours(+h, +m);
+        parts.push(dt.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}));
+      }
+      return parts.join(' · ');
+    }
+
+    /* ---- Load screenings ---- */
+    function init(){
+      onSnapshot(collection(db,'screenings'), snap=>{
+        let live=null; const prev=[];
+        snap.forEach(d=>{
+          const s={id:d.id,...d.data()};
+          if(s.status==='live'||s.status==='closed'){
+            if(!live || (s.createdAt?.toMillis?.()||0)>(live.createdAt?.toMillis?.()||0)) live=s;
+          } else if(s.status==='ended'){ prev.push(s); }
+        });
+        prev.sort((a,b)=>(b.endedAt?.toMillis?.()||0)-(a.endedAt?.toMillis?.()||0));
+        screening=live; screeningId=live?.id||null;
+        live ? renderLanding() : renderLandingEmpty();
+        renderPrev(prev);
+      });
+    }
+
+    function renderLandingEmpty(){
+      $('landing-inner').innerHTML=`<div class="info-screen"><h2>No live screening yet</h2><p>Check back soon for the next show!</p></div>`;
+    }
+
+function renderLanding(){
+      // 1. Prepare Chips (IMDb, Language, etc.)
+      const chips = [];
+      if (screening.imdbRating) chips.push(`<span class="chip imdb">★ ${screening.imdbRating} IMDb</span>`);
+      if (screening.language) chips.push(`<span class="chip">${screening.language}</span>`);
+      const chipsHTML = chips.length ? `<div class="chips">${chips.join('')}</div>` : '';
+      
+      // 2. Prepare Teaser Button
+      const teaserBtn = screening.teaserUrl
+        ? `<button class="btn-outline" id="btn-teaser">▶ View ${screening.teaserType||'Trailer'}</button>` 
+        : '';
+
+      // 3. Prepare Description with Inline "More/Less" Toggle
+      const rawDesc = screening.description || '';
+      // Dynamically calculate the character limit based on screen width
+      let charLimit = 120; // Default for desktop/laptops
+      if (window.innerWidth < 400) {
+          charLimit = 70; // 2 lines on narrower phones 
+      } else if (window.innerWidth < 600) {
+          charLimit = 85; // 2 lines on larger phones
+      }
+      let finalDescHTML = '';
+      let hasToggle = false;
+
+      if (rawDesc.length > charLimit) {
+          hasToggle = true;
+          if (isDescExpanded) {
+              // Expanded state: show full text and "less" button
+              finalDescHTML = escapeHtml(rawDesc).replace(/\n/g, '<br>') + ' <span class="desc-toggle" id="desc-toggle">less</span>';
+          } else {
+              // Clamped state: slice text, add "...", and "more" button
+              finalDescHTML = escapeHtml(rawDesc.substring(0, charLimit).trim()).replace(/\n/g, '<br>') + '... <span class="desc-toggle" id="desc-toggle">more</span>';
+          }
+      } else {
+          // Short description: just render the text
+          finalDescHTML = escapeHtml(rawDesc).replace(/\n/g, '<br>');
+      }
+
+      // 4. Inject HTML based on Screening Status
+      if (screening.status === 'closed') {
+        $('landing-inner').innerHTML = `<div class="hero-banner">
+          ${screening.bannerUrl ? `<img class="hero-poster" src="${screening.bannerUrl}" alt="${(screening.title||'').replace(/"/g,'&quot;')}">` : ''}
+          <div class="hero-content">
+            <h1 class="movie-title">${screening.title||''}</h1>
+            ${chipsHTML}
+            <div class="movie-meta">${fmtWhen(screening) ? `<span>${fmtWhen(screening)}</span>` : ''}</div>
+            <p class="movie-desc">Registrations have ended.</p>
+            ${teaserBtn}
+          </div>
+        </div>`;
+      } else {
+        $('landing-inner').innerHTML = `<div class="hero-banner">
+          ${screening.bannerUrl ? `<img class="hero-poster" src="${screening.bannerUrl}" alt="${(screening.title||'').replace(/"/g,'&quot;')}">` : ''}
+          <div class="hero-content">
+            <h1 class="movie-title">${screening.title||''}</h1>
+            ${chipsHTML}
+            <div class="movie-meta">${fmtWhen(screening) ? `<span>${fmtWhen(screening)}</span>` : ''}</div>
+            <p class="movie-desc" id="movie-desc">${finalDescHTML}</p>
+            ${teaserBtn}
+            <button id="btn-book-seat" class="btn-primary">Book a Seat</button>
+          </div>
+        </div>`;
+          
+        // Attach book button listener
+        $('btn-book-seat').onclick = openSeatSelection;
+      }
+
+      // 5. Attach Click Listeners
+      if ($('btn-teaser')) {
+          $('btn-teaser').onclick = () => window.open(screening.teaserUrl, '_blank');
+      }
+
+      // Instantly attach the toggle listener if the text was long enough
+      if (hasToggle && $('desc-toggle')) {
+          $('desc-toggle').onclick = () => {
+              isDescExpanded = !isDescExpanded;
+              renderLanding(); // Instantly rebuilds the UI with the updated text state
+          };
+      }
+    }
+    function escapeHtml(s){ return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    function renderPrev(prev){
+      if(!prev.length){ $('prev-screenings').innerHTML=''; return; }
+      $('prev-screenings').innerHTML=`<h3>Previous Screenings</h3>`+prev.map(s=>`
+        <div class="prev-card">
+          <div class="thumb" style="background-image:url('${s.bannerUrl||''}')"></div>
+          <div class="info">
+            <h4>${s.title||'Untitled'}</h4>
+            <p>${fmtWhen(s)||''}</p>
+          </div>
+        </div>`).join('');
+    }
+
+    /* ---- Seat selection ---- */
+function openSeatSelection(){
+      if(!isPrimary){ showBlocked(); return; }
+      if(unsubSeats) unsubSeats();
+      selectedSeats=[];
+      isFirstSeatRender = true; // Reset the flag every time they open the layout
+
+      unsubSeats=onSnapshot(collection(db,'screenings',screeningId,'seats'), snap=>{
+        seatsCache={}; snap.forEach(d=>{ seatsCache[d.id]={id:d.id,...d.data()}; });
+        renderSeatGrid();
+
+        // NEW: Center the scroll container ONLY on the first render
+        if (isFirstSeatRender) {
+            setTimeout(() => {
+                const scrollContainer = document.querySelector('.seat-scroll');
+                if (scrollContainer) {
+                    // Calculate the exact center pixel
+                    const centerPos = (scrollContainer.scrollWidth - scrollContainer.clientWidth) / 2;
+                    scrollContainer.scrollLeft = centerPos;
+                }
+            }, 50); // Tiny delay ensures the browser finishes drawing the seats first
+            isFirstSeatRender = false;
+        }
+      });
+      switchView('seats'); updateFooter();
+    }
+
+    function effectiveStatus(seat){
+      if(!seat) return 'available';
+      if(seat.status==='locked' && seat.lockedAt){
+        if(Date.now()-seat.lockedAt.toMillis() > LOCK_TIMEOUT_MS) return 'available';
+      }
+      return seat.status;
+    }
+
+    function renderSeatGrid(){
+      const cont=$('seat-sections'); cont.innerHTML='';
+      if(!screening?.layout) return;
+      const layout=screening.layout;
+      const total=layout.length;
+      const maxR=layout.reduce((m,s)=>Math.max(m,s.rows.length),0);
+      const secEls=layout.map((s,sIdx)=>{ const sec=document.createElement('div'); sec.className='seat-section '+sectionAlign(sIdx,total); return sec; });
+      for(let rIdx=0; rIdx<maxR; rIdx++){
+        const label=String.fromCharCode(65+rIdx);
+        const counts=layout.map(s=>s.rows[rIdx]||0);
+        const numbering=rowSeatNumbers(counts);
+        layout.forEach((section,sIdx)=>{
+          const seatCount=section.rows[rIdx]||0;
+          const row=document.createElement('div'); row.className='seat-row';
+          const labelHTML=`<span class="rlabel">${label}</span>`;
+          const labelOnLeft = sIdx===0;
+          if(labelOnLeft && seatCount) row.innerHTML=labelHTML;
+          const nums=numbering[sIdx];
+          for(let i=0;i<seatCount;i++){
+            const gNum=nums[i];
+            const seatId=`S${sIdx}-${label}${gNum}`;
+            const seat=seatsCache[seatId];
+            const st=effectiveStatus(seat);
+            const mine = seat?.status==='locked' && seat?.lockedBy===sessionId;
+            const isSelected=selectedSeats.includes(seatId);
+            let cls='available';
+            if(st==='booked'||st==='reserved') cls='booked';
+            else if(st==='locked' && !mine) cls='locked';
+            else if(isSelected||mine) cls='selected';
+            const el=document.createElement('div');
+            el.className='seat '+cls; el.dataset.id=seatId;
+            el.title=`${label}${gNum}`;
+            el.onclick=()=>handleSeatClick(seatId, cls);
+            row.appendChild(el);
+          }
+          if(!labelOnLeft && seatCount) row.insertAdjacentHTML('beforeend', labelHTML);
+          secEls[sIdx].appendChild(row);
+        });
+      }
+      secEls.forEach((sec,sIdx)=>{
+        if(sIdx>0){ const p=document.createElement('div'); p.className='path-gap'; p.innerHTML='<span>PATH</span>'; cont.appendChild(p); }
+        cont.appendChild(sec);
+      });
+    }
+
+    function handleSeatClick(seatId, cls){
+      if(cls==='booked'||cls==='locked') return;
+      const idx=selectedSeats.indexOf(seatId);
+      if(idx>=0) selectedSeats.splice(idx,1);
+      else { if(selectedSeats.length>=MAX_SEATS){ alert(`You can only select up to ${MAX_SEATS} seats.`); return; } selectedSeats.push(seatId); }
+      renderSeatGrid(); updateFooter();
+    }
+    function updateFooter(){ $('selected-count').textContent=selectedSeats.length; $('btn-proceed').disabled=selectedSeats.length===0; }
+
+    /* Back from seats -> landing */
+    $('back-to-landing').onclick=()=>{ if(unsubSeats){unsubSeats();unsubSeats=null;} selectedSeats=[]; switchView('landing'); };
+
+    /* Proceed -> lock seats */
+    $('btn-proceed').onclick=async()=>{
+      $('btn-proceed').disabled=true;
+      try{
+        await runTransaction(db, async tx=>{
+          const refs=selectedSeats.map(id=>doc(db,'screenings',screeningId,'seats',id));
+          const snaps=await Promise.all(refs.map(r=>tx.get(r)));
+          snaps.forEach((s,i)=>{
+            const d=s.data();
+            const taken=d.status==='booked'||d.status==='reserved'||
+              (d.status==='locked'&&d.lockedBy!==sessionId&&d.lockedAt&&(Date.now()-d.lockedAt.toMillis())<LOCK_TIMEOUT_MS);
+            if(taken) throw new Error(`Seat ${prettySeat(selectedSeats[i])} was just taken. Please pick another.`);
+          });
+          refs.forEach(r=>tx.update(r,{status:'locked', lockedBy:sessionId, lockedAt:serverTimestamp()}));
+        });
+        startLockTimer(); renderCheckoutForms(); switchView('checkout');
+      }catch(e){ alert(e.message); renderSeatGrid(); }
+      finally{ $('btn-proceed').disabled=false; }
+    };
+
+    function startLockTimer(){
+      lockExpiresAt=Date.now()+LOCK_TIMEOUT_MS;
+      if(lockTimerInterval) clearInterval(lockTimerInterval);
+      lockTimerInterval=setInterval(()=>{
+        const left=Math.max(0,lockExpiresAt-Date.now());
+        const m=Math.floor(left/60000), s=Math.floor((left%60000)/1000);
+        $('lock-timer').textContent=`Seats held for ${m}:${String(s).padStart(2,'0')}`;
+        if(left<=0){ clearInterval(lockTimerInterval); releaseLocks(); alert('Your seat hold expired.'); backToSeats(); }
+      },500);
+    }
+
+    async function releaseLocks(){
+      const batch=writeBatch(db); let any=false;
+      selectedSeats.forEach(id=>{
+        const seat=seatsCache[id];
+        if(seat?.status==='locked' && seat?.lockedBy===sessionId){
+          batch.update(doc(db,'screenings',screeningId,'seats',id),{status:'available',lockedBy:null,lockedAt:null}); any=true;
+        }
+      });
+      if(any){ try{ await batch.commit(); }catch(e){} }
+    }
+
+    /* Back from checkout -> release locks -> seats */
+    function backToSeats(){
+      if(lockTimerInterval) clearInterval(lockTimerInterval);
+      releaseLocks();
+      // re-open live listener if it was closed
+      openSeatSelection();
+    }
+    $('back-to-seats').onclick=backToSeats;
+
+    function renderCheckoutForms(){
+      $('dynamic-forms-container').innerHTML='';
+      selectedSeats.forEach(seatId=>{
+        const g=document.createElement('div'); g.className='seat-form-group'; g.dataset.seat=seatId;
+        g.innerHTML=`<h3>Seat ${prettySeat(seatId)}</h3>
+          <input type="text" class="input-field" data-field="name" placeholder="Full Name" required>
+          <label style="display:block; font-size:0.78rem; color:#999; margin-bottom:6px;">Enrollment Number</label>
+          <div class="enroll-wrap">
+            <input type="text" class="enroll-part" data-field="enroll1" inputmode="numeric" maxlength="2" placeholder="2X">
+            <span class="enroll-fixed">BSPHH01C</span>
+            <input type="text" class="enroll-part enroll-suffix" data-field="enroll2" inputmode="numeric" maxlength="4" placeholder="XXXX">
+          </div>
+          <input type="tel" class="input-field" data-field="phone" placeholder="Mobile Number" required>
+          <input type="email" class="input-field" data-field="email" placeholder="Email ID" required>
+          <div class="field-err" data-err></div>`;
+        $('dynamic-forms-container').appendChild(g);
+        const e1=g.querySelector('[data-field="enroll1"]'), e2=g.querySelector('[data-field="enroll2"]');
+        const digitsOnly=el=>el.addEventListener('input',()=>{ el.value=el.value.replace(/\D/g,''); });
+        digitsOnly(e1); digitsOnly(e2);
+        e1.addEventListener('input',()=>{ if(e1.value.length>=2) e2.focus(); });
+      });
+    }
+
+    /* ---- Confirm booking with uniqueness validation ---- */
+    $('checkout-form').addEventListener('submit', async e=>{
+      e.preventDefault();
+      $('btn-confirm').disabled=true;
+      const groups=[...document.querySelectorAll('.seat-form-group')];
+      const entries=groups.map(g=>{
+        const p1=g.querySelector('[data-field="enroll1"]').value.trim();
+        const p2=g.querySelector('[data-field="enroll2"]').value.trim();
+        const enrollment = (p1||p2) ? `${p1}BSPHH01C${p2}`.toUpperCase() : '';
+        return {
+          seatId:g.dataset.seat,
+          name:g.querySelector('[data-field="name"]').value.trim(),
+          enrollment,
+          phone:g.querySelector('[data-field="phone"]').value.trim(),
+          email:g.querySelector('[data-field="email"]').value.trim().toLowerCase()
+        };
+      });
+
+      // clear old errors
+      groups.forEach(g=>{ g.querySelector('[data-err]').textContent=''; g.querySelectorAll('.input-field,.enroll-wrap').forEach(f=>f.classList.remove('err')); });
+
+      // validate enrollment format (2 digits + 4 digits)
+      let hasError=false;
+      entries.forEach((en,idx)=>{
+        const g=groups[idx];
+        const p1=g.querySelector('[data-field="enroll1"]').value.trim();
+        const p2=g.querySelector('[data-field="enroll2"]').value.trim();
+        if(!en.name||!en.phone||!en.email){ /* browser required handles empties, but split inputs aren't required */ }
+        if(p1.length!==2 || p2.length!==4){
+          markErr(g,'Enter your full enrollment: 2 digits + BSPHH01C + 4 digits.'); hasError=true;
+        }
+      });
+      if(hasError){ $('btn-confirm').disabled=false; return; }
+
+      // 1. within-this-booking duplicate ENROLLMENT only
+      const seenEnroll={};
+      entries.forEach((en,idx)=>{
+        if(seenEnroll[en.enrollment]!==undefined){
+          markErr(groups[idx],'This enrollment number is already used in this booking.'); hasError=true;
+        } else seenEnroll[en.enrollment]=idx;
+      });
+      if(hasError){ $('btn-confirm').disabled=false; return; }
+
+      // 2. duplicate ENROLLMENT against existing bookings in this screening
+      try{
+        const existing=await getDocs(collection(db,'screenings',screeningId,'bookings'));
+        const usedEnroll=new Set();
+        existing.forEach(d=> (d.data().entries||[]).forEach(en=>{ if(en.enrollment) usedEnroll.add(en.enrollment.toUpperCase()); }));
+        entries.forEach((en,idx)=>{
+          if(usedEnroll.has(en.enrollment)){
+            markErr(groups[idx],'Already enrolled — this enrollment number has booked before.'); hasError=true;
+          }
+        });
+        if(hasError){ $('btn-confirm').disabled=false; return; }
+      }catch(err){}
+
+      try{
+        const bookingRef=doc(collection(db,'screenings',screeningId,'bookings'));
+        let bookingCode='';
+        await runTransaction(db, async tx=>{
+          const scrRef=doc(db,'screenings',screeningId);
+          const scrSnap=await tx.get(scrRef);
+          const scrData=scrSnap.data();
+          if(scrData.status!=='live') throw new Error('Bookings are closed.');
+          const refs=selectedSeats.map(id=>doc(db,'screenings',screeningId,'seats',id));
+          const snaps=await Promise.all(refs.map(r=>tx.get(r)));
+          snaps.forEach((s,i)=>{
+            const d=s.data();
+            if(!(d.status==='locked'&&d.lockedBy===sessionId)) throw new Error(`Your hold on ${prettySeat(selectedSeats[i])} expired. Please start again.`);
+          });
+          // sequential registration number (1-based, no upper limit)
+          const regNo=(scrData.regCounter||0)+1;
+          const nn = regNo<100 ? String(regNo).padStart(2,'0') : String(regNo);
+          bookingCode=`INFDOT ${(scrData.screeningCode||'').toUpperCase()}${nn}`;
+          refs.forEach(r=>tx.update(r,{status:'booked', bookingId:bookingRef.id, lockedBy:null, lockedAt:null}));
+          tx.set(bookingRef,{ bookingCode, regNo, seatIds:selectedSeats, entries, createdAt:serverTimestamp() });
+          tx.update(scrRef,{ bookedCount:(scrData.bookedCount||0)+selectedSeats.length, regCounter:regNo });
+        });
+        if(lockTimerInterval) clearInterval(lockTimerInterval);
+        $('booking-id-display').textContent=bookingCode;
+        if(unsubSeats){ unsubSeats(); unsubSeats=null; }
+        switchView('success');
+      }catch(err){ alert(err.message); $('btn-confirm').disabled=false; }
+    });
+
+    function markErr(group, msg){
+      group.querySelector('[data-err]').textContent=msg;
+      const w=group.querySelector('.enroll-wrap'); if(w) w.classList.add('err');
+    }
+
+    $('btn-done').onclick=()=>{ selectedSeats=[]; switchView('landing'); };
+
+    // Release locks if tab is closed/hidden mid-checkout
+    window.addEventListener('pagehide', ()=>{ if(!views.checkout.classList.contains('hidden')) releaseLocks(); });
+
+    // Give the BroadcastChannel a moment to detect a conflict before showing UI
+    setTimeout(()=>{ init(); }, 450);
+    </script>
+</body>
+</html>
